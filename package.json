@@ -4,6 +4,9 @@
   "workspaces": [
     "apps/*"
   ],
+  "scripts": {
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 bun -F @geotask/* start:dev"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
