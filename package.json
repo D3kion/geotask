@@ -1,6 +1,7 @@
 {
   "name": "geotask",
   "private": true,
+  "packageManager": "bun",
   "workspaces": [
     "apps/*"
   ],
