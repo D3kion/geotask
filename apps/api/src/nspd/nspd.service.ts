@@ -4,7 +4,7 @@ import { TokenStore } from '../auth/token.store.js';
 const NSPD_BASE = process.env.NSPD_BASE_URL ?? 'https://nspd.gov.ru';
 const NSPD_REFERER =
   process.env.NSPD_REFERER ??
-  'https://nspd.gov.ru/map?thematic=Default&theme_id=1&is_copy_url=true&baseLayerId=0';
+  'https://nspd.gov.ru/map?thematic=Default&theme_id=1&is_copy_url=true&active_layers=36945';
 const NSPD_UA =
   process.env.NSPD_USER_AGENT ??
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 YaBrowser/26.8.0.0 Safari/537.36';
@@ -70,7 +70,7 @@ export class NspdService {
     const url = new URL(path, NSPD_BASE);
 
     for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== null && v !== '') {
+      if (v !== undefined && v !== null) {
         url.searchParams.set(k, String(v));
       }
     }

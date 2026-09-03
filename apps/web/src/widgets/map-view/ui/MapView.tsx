@@ -240,9 +240,18 @@ export function MapView({
 
   useEffect(() => {
     (async () => {
-      const [{ default: TileLayer }, { default: TileWMS }] = await Promise.all([
+      const [
+        { default: TileLayer },
+        { default: TileWMS },
+        { default: TileGrid },
+        { get: getProjection },
+        { getWidth },
+      ] = await Promise.all([
         import("ol/layer/Tile"),
         import("ol/source/TileWMS"),
+        import("ol/tilegrid/TileGrid"),
+        import("ol/proj"),
+        import("ol/extent"),
       ]);
       const map = mapRef.current;
       if (!map) return;
@@ -263,15 +272,26 @@ export function MapView({
         let tileLayer = wmsByIdRef.current.get(id);
 
         if (!tileLayer) {
+          const projExtent = getProjection("EPSG:3857")?.getExtent() ?? [];
+          const startResolution = getWidth(projExtent) / 256;
+          const resolutions = new Array(22);
+          for (let i = 0, ii = resolutions.length; i < ii; ++i) {
+            resolutions[i] = startResolution / Math.pow(2, i);
+          }
           const source = new TileWMS({
             url: `/api/aeggis/v4/${id}/wms`,
             params: {
               LAYERS: String(l.layerId),
-              TILED: true,
               VERSION: "1.3.0",
+              RANDOM: 0.7870716989640726,
             },
             serverType: "geoserver",
             transition: 0,
+            tileGrid: new TileGrid({
+              tileSize: [512, 512],
+              extent: projExtent,
+              resolutions: resolutions,
+            }),
           });
 
           tileLayer = new TileLayer({ source, visible: isVisible });
@@ -357,14 +377,9 @@ export function MapView({
   return (
     <div className="relative flex-1 bg-zinc-100">
       <div ref={containerRef} className="absolute inset-0" />
-
-      <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-white/90 backdrop-blur border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 shadow-sm">
-        Клик по слою — GetFeatureInfo · поиск — маркеры
-      </div>
-
-      <div className="pointer-events-none absolute bottom-3 right-3 rounded bg-white/90 backdrop-blur border border-zinc-200 px-2 py-1 text-[10px] text-zinc-500">
+      {/* <div className="pointer-events-none absolute bottom-3 right-3 rounded bg-white/90 backdrop-blur border border-zinc-200 px-2 py-1 text-[10px] text-zinc-500">
         {visible.size} слоёв · {markers.length} маркеров
-      </div>
+      </div> */}
     </div>
   );
 }

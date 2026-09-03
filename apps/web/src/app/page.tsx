@@ -2,10 +2,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Sidebar, type SidebarView } from "@/widgets/sidebar/ui/Sidebar";
 import { MapView } from "@/widgets/map-view/ui/MapView";
 import type { GeoObject } from "@/entities/geo-object/model/types";
-import type { NspdLayer, NspdTheme } from "@/shared/api/nspd";
 import {
   buildLayerTree,
   fetchThemes,
@@ -17,158 +17,126 @@ import type { MapLayer } from "@/entities/map-layer/model/types";
 
 export default function Home() {
   const [query, setQuery] = useState("");
-
-  const [themes, setThemes] = useState<NspdTheme[] | null>(null);
-  const [themesError, setThemesError] = useState<string | null>(null);
-  const [datasetId, setDatasetId] = useState<string>("");
-
-  const [wmsLayers, setWmsLayers] = useState<NspdLayer[]>([]);
-  const [layerTree, setLayerTree] = useState<MapLayer[]>([]);
-  const [treeError, setTreeError] = useState<string | null>(null);
-  const [treeLoading, setTreeLoading] = useState(false);
-
-  const [visible, setVisible] = useState<Set<string>>(() => new Set<string>());
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>());
-
   const [searchType, setSearchType] = useState<SearchTypeId>(1);
-  const [searchResults, setSearchResults] = useState<GeoObject[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [selection, setSelection] = useState<GeoObject[]>([]);
   const [detail, setDetail] = useState<GeoObject | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const fetched = await fetchThemes();
-        if (cancelled) return;
-        if (fetched.length > 0) {
-          setThemes(fetched);
-          setThemesError(null);
-          const firstId = String(fetched[0]!.id);
-          setDatasetId((prev) => (prev && fetched.some((t) => String(t.id) === prev) ? prev : firstId));
-        } else {
-          setThemesError(null);
-        }
-      } catch (e) {
-        if (!cancelled) setThemesError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [datasetId, setDatasetId] = useState<string>("");
+  const [visible, setVisible] = useState<Set<string>>(() => new Set<string>());
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set<string>(),
+  );
+
+  const {
+    data: themesData,
+    isLoading: themesLoading,
+    error: themesErrorRaw,
+  } = useQuery({
+    queryKey: ["themes"],
+    queryFn: fetchThemes,
+  });
+  const themes = themesData ?? null;
+  const themesError = themesErrorRaw
+    ? themesErrorRaw instanceof Error
+      ? themesErrorRaw.message
+      : String(themesErrorRaw)
+    : null;
 
   useEffect(() => {
-    if (!datasetId) return;
+    if (!themes || themes.length === 0) return;
+    const firstId = String(themes[0]!.id);
+    if (!datasetId || !themes.some((t) => String(t.id) === datasetId)) {
+      setDatasetId(firstId);
+    }
+  }, [themes, datasetId]);
 
-    let cancelled = false;
-    setTreeLoading(true);
-    setTreeError(null);
+  const numericDatasetId = Number(datasetId);
+  const treeEnabled = !!datasetId && !Number.isNaN(numericDatasetId);
 
-    (async () => {
-      try {
-        const numericId = Number(datasetId);
-        if (Number.isNaN(numericId)) {
-          if (!cancelled) {
-            setWmsLayers([]);
-            setLayerTree([]);
-            setVisible(new Set<string>());
-            setExpanded(new Set<string>());
-          }
-          return;
-        }
+  const {
+    data: treeData,
+    isLoading: treeLoading,
+    error: treeErrorRaw,
+  } = useQuery({
+    queryKey: ["tree", datasetId],
+    queryFn: () => fetchThemeTree(numericDatasetId),
+    enabled: treeEnabled,
+  });
 
-        const { layers, tree } = await fetchThemeTree(numericId);
-        if (cancelled) return;
+  const treeError = treeErrorRaw
+    ? treeErrorRaw instanceof Error
+      ? treeErrorRaw.message
+      : String(treeErrorRaw)
+    : null;
 
-        if (!layers.length) {
-          setTreeError("Слоев нет");
-          setWmsLayers([]);
-          setLayerTree([]);
-          setVisible(new Set<string>());
-          setExpanded(new Set<string>());
-          return;
-        }
+  const wmsLayers = useMemo(() => treeData?.layers ?? [], [treeData]);
 
-        setWmsLayers(layers);
+  const layerTree: MapLayer[] = useMemo(() => {
+    if (!treeData) return [];
+    if (!treeData.layers.length) return [];
+    const built = buildLayerTree(treeData.layers, treeData.tree);
+    return built.length
+      ? built
+      : treeData.layers.map((l) => ({ id: String(l.layerId), title: l.title }));
+  }, [treeData]);
 
-        const built = buildLayerTree(layers, tree);
-        setLayerTree(built.length ? built : layers.map((l) => ({ id: String(l.layerId), title: l.title })));
-
+  useEffect(() => {
+    if (!treeData) {
+      if (!treeEnabled) {
         setVisible(new Set<string>());
-
-        const expandIds = new Set<string>();
-        const walk = (nodes: MapLayer[]) => {
-          for (const n of nodes)
-            if (n.children?.length) {
-              expandIds.add(n.id);
-              walk(n.children);
-            }
-        };
-        walk(built);
-        setExpanded(expandIds.size ? expandIds : new Set(built.map((b) => b.id)));
-      } catch (e) {
-        if (!cancelled) {
-          setTreeError(e instanceof Error ? e.message : String(e));
-          setWmsLayers([]);
-          setLayerTree([]);
-          setVisible(new Set<string>());
-        }
-      } finally {
-        if (!cancelled) setTreeLoading(false);
+        setExpanded(new Set<string>());
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [datasetId]);
-
-  useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) {
-      setSearchResults([]);
-      setSearchLoading(false);
       return;
     }
+    setVisible(new Set<string>());
 
-    let cancelled = false;
-    setSearchLoading(true);
-
-    const t = setTimeout(async () => {
-      try {
-        const results = await searchGeoportal(q, searchType);
-        if (cancelled) return;
-        setSearchResults(results);
-      } catch {
-        if (cancelled) return;
-        setSearchResults([]);
-      } finally {
-        if (!cancelled) setSearchLoading(false);
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
+    const expandIds = new Set<string>();
+    const walk = (nodes: MapLayer[]) => {
+      for (const n of nodes)
+        if (n.children?.length) {
+          expandIds.add(n.id);
+          walk(n.children);
+        }
     };
-  }, [query, searchType]);
+    const built = buildLayerTree(treeData.layers, treeData.tree);
+    const target = built.length
+      ? built
+      : treeData.layers.map((l) => ({ id: String(l.layerId), title: l.title }));
+    walk(target);
+    setExpanded(expandIds.size ? expandIds : new Set(target.map((b) => b.id)));
+  }, [treeData, treeEnabled]);
+
+  const { data: searchData, isFetching: searchLoading } = useQuery({
+    queryKey: ["search", submittedQuery, searchType],
+    queryFn: () => searchGeoportal(submittedQuery.trim(), searchType),
+    enabled: submittedQuery.trim().length >= 2,
+  });
+  const searchResults = useMemo(() => searchData ?? [], [searchData]);
+
+  function handleSearch() {
+    const q = query.trim();
+    if (q.length < 2) return;
+    setSubmittedQuery(q);
+    setDetail(null);
+    setSelection([]);
+  }
 
   const markers: GeoObject[] = useMemo(() => {
     if (detail) return [detail];
-    if (query.trim().length >= 2) return searchResults;
+    if (submittedQuery.trim().length >= 2) return searchResults;
     if (selection.length > 0) return selection;
     return [];
-  }, [detail, query, searchResults, selection]);
+  }, [detail, submittedQuery, searchResults, selection]);
 
   const view: SidebarView = useMemo(() => {
     if (detail) return { mode: "detail", object: detail };
-    const q = query.trim();
-    if (q.length >= 2) return { mode: "search", results: searchResults, query: q };
+    const sq = submittedQuery.trim();
+    if (sq.length >= 2)
+      return { mode: "search", results: searchResults, query: sq };
     if (selection.length > 0) return { mode: "selection", objects: selection };
     return { mode: "layers" };
-  }, [detail, query, searchResults, selection]);
+  }, [detail, submittedQuery, searchResults, selection]);
 
   const datasetsForSidebar = useMemo(() => {
     if (themes && themes.length > 0) {
@@ -179,16 +147,13 @@ export default function Home() {
 
   function handleQueryChange(v: string) {
     setQuery(v);
-    if (v.trim().length > 0) {
-      setDetail(null);
-      setSelection([]);
-    }
   }
 
   function handleClearSearch() {
     setQuery("");
-    setSearchResults([]);
+    setSubmittedQuery("");
     setDetail(null);
+    setSelection([]);
   }
 
   function handleToggleLayer(id: string) {
@@ -218,24 +183,30 @@ export default function Home() {
       setDetail(null);
       return;
     }
+    if (submittedQuery) {
+      setSubmittedQuery("");
+      return;
+    }
     setQuery("");
-    setSearchResults([]);
     setSelection([]);
   }
 
   function handleMapPick(objs: GeoObject[]) {
     setQuery("");
-    setSearchResults([]);
+    setSubmittedQuery("");
     setDetail(null);
     setSelection(objs);
   }
 
   function handleMapSelect(obj: GeoObject) {
     setQuery("");
-    setSearchResults([]);
+    setSubmittedQuery("");
     setSelection([]);
     setDetail(obj);
   }
+
+  const isLoading = themesLoading || treeLoading || searchLoading;
+  const error = themesError ?? treeError;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-white">
@@ -244,6 +215,7 @@ export default function Home() {
         query={query}
         onQueryChange={handleQueryChange}
         onClearSearch={handleClearSearch}
+        onSearch={handleSearch}
         searchType={searchType}
         onSearchTypeChange={(v) => setSearchType(v)}
         datasets={datasetsForSidebar}
@@ -252,7 +224,7 @@ export default function Home() {
           setDatasetId(id);
           setDetail(null);
           setSelection([]);
-          setSearchResults([]);
+          setSubmittedQuery("");
           setQuery("");
         }}
         layers={layerTree}
@@ -262,8 +234,8 @@ export default function Home() {
         onToggleExpand={handleToggleExpand}
         onSelectObject={handleSelectObject}
         onBack={handleBack}
-        isLoading={treeLoading || searchLoading}
-        error={themesError ?? treeError}
+        isLoading={isLoading}
+        error={error}
       />
       <MapView
         wmsLayers={wmsLayers}

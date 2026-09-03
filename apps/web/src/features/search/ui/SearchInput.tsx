@@ -4,11 +4,13 @@ export function SearchInput({
   value,
   onChange,
   onClear,
+  onSubmit,
   placeholder = "Поиск по объектам…",
 }: {
   value: string;
   onChange: (v: string) => void;
   onClear: () => void;
+  onSubmit?: () => void;
   placeholder?: string;
 }) {
   return (
@@ -19,6 +21,9 @@ export function SearchInput({
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit?.();
+        }}
         placeholder={placeholder}
         className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-8 pr-8 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300"
       />
