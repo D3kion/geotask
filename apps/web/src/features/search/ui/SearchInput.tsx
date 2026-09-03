@@ -25,7 +25,7 @@ export function SearchInput({
           if (e.key === "Enter") onSubmit?.();
         }}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-8 pr-8 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300"
+        className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-8 pr-8 text-sm text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300"
       />
       {value && (
         <button

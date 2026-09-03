@@ -32,18 +32,35 @@ export function SearchTypeDropdown({
     }
   }, [open]);
 
+  const isDefault = value === 1;
+
   return (
     <div ref={ref} className="relative shrink-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900/10"
+        title={`Фильтр: ${current.label}`}
+        aria-label={`Фильтр поиска: ${current.label}`}
         aria-haspopup="menu"
         aria-expanded={open}
+        className={`relative flex h-9 w-9 items-center justify-center rounded-lg border bg-white hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 ${isDefault ? "border-zinc-200 text-zinc-600" : "border-zinc-900 text-zinc-900 bg-zinc-50"}`}
       >
-        <span className="text-[11px]">◈</span>
-        <span className="max-w-[90px] truncate">{current.label}</span>
-        <span className="text-zinc-400 text-[10px]">{open ? "▲" : "▼"}</span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M3 6h18l-7 8v5l-3 1.5V14z" />
+        </svg>
+        {!isDefault && (
+          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-zinc-900 ring-2 ring-white" />
+        )}
       </button>
 
       {open && (

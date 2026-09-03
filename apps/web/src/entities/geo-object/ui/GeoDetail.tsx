@@ -21,12 +21,6 @@ export function GeoDetail({ obj }: { obj: GeoObject }) {
               <dd className="font-medium text-zinc-900">{v}</dd>
             </div>
           ))}
-          <div className="flex justify-between px-3 py-2 text-sm">
-            <dt className="text-zinc-500">Координаты</dt>
-            <dd className="font-mono text-xs text-zinc-900">
-              {obj.coords[1].toFixed(4)}, {obj.coords[0].toFixed(4)}
-            </dd>
-          </div>
         </dl>
       </div>
     </div>

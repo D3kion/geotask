@@ -236,6 +236,7 @@ export default function Home() {
         onBack={handleBack}
         isLoading={isLoading}
         error={error}
+        wmsLayers={wmsLayers}
       />
       <MapView
         wmsLayers={wmsLayers}

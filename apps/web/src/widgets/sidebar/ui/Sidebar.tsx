@@ -1,13 +1,14 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import type { GeoObject } from "@/entities/geo-object/model/types";
 import type { MapLayer } from "@/entities/map-layer/model/types";
-import { GeoListItem } from "@/entities/geo-object/ui/GeoListItem";
 import { GeoDetail } from "@/entities/geo-object/ui/GeoDetail";
+import { GeoGroupedList } from "@/entities/geo-object/ui/GeoGroupedList";
 import { SearchInput } from "@/features/search/ui/SearchInput";
 import { SearchTypeDropdown } from "@/features/search/ui/SearchTypeDropdown";
 import { LayerTree } from "@/features/layer-tree/ui/LayerTree";
-import type { SearchTypeId } from "@/shared/api/nspd";
+import type { NspdLayer, SearchTypeId } from "@/shared/api/nspd";
 
 export type SidebarView =
   | { mode: "layers" }
@@ -35,6 +36,7 @@ export function Sidebar({
   onBack,
   isLoading,
   error,
+  wmsLayers,
 }: {
   view: SidebarView;
   query: string;
@@ -55,7 +57,22 @@ export function Sidebar({
   onBack: () => void;
   isLoading?: boolean;
   error?: string | null;
+  wmsLayers?: NspdLayer[];
 }) {
+  const titleById = useMemo(() => {
+    const m = new Map<string, string>();
+    wmsLayers?.forEach((l) => m.set(String(l.layerId), l.title));
+    const walk = (nodes: MapLayer[]) => {
+      for (const n of nodes) {
+        if (!m.has(n.id)) m.set(n.id, n.title);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(layers);
+    return m;
+  }, [wmsLayers, layers]);
+
+  const getLayerTitle = useCallback((id: string) => titleById.get(id) ?? id, [titleById]);
   return (
     <aside className="flex w-[380px] shrink-0 flex-col border-r border-zinc-200 bg-white">
       {view.mode !== "layers" && (
@@ -223,15 +240,11 @@ export function Sidebar({
                   Ничего не найдено по «{view.query}»
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {view.results.map((o) => (
-                    <GeoListItem
-                      key={o.id}
-                      obj={o}
-                      onClick={() => onSelectObject(o)}
-                    />
-                  ))}
-                </div>
+                <GeoGroupedList
+                  objects={view.results}
+                  getLayerTitle={getLayerTitle}
+                  onSelect={onSelectObject}
+                />
               )}
             </div>
           </>
@@ -239,22 +252,17 @@ export function Sidebar({
 
         {view.mode === "selection" && (
           <div className="flex-1 overflow-y-auto p-3">
-            <div className="space-y-2">
-              {view.objects.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-200 p-6 text-center text-sm text-zinc-500">
-                  Нет объектов в этой точке — попробуйте кликнуть ближе к
-                  маркеру
-                </div>
-              ) : (
-                view.objects.map((o) => (
-                  <GeoListItem
-                    key={o.id}
-                    obj={o}
-                    onClick={() => onSelectObject(o)}
-                  />
-                ))
-              )}
-            </div>
+            {view.objects.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-zinc-200 p-6 text-center text-sm text-zinc-500">
+                Нет объектов в этой точке — попробуйте кликнуть ближе к маркеру
+              </div>
+            ) : (
+              <GeoGroupedList
+                objects={view.objects}
+                getLayerTitle={getLayerTitle}
+                onSelect={onSelectObject}
+              />
+            )}
           </div>
         )}
 
