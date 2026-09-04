@@ -90,21 +90,7 @@ export default function Home() {
       return;
     }
     setVisible(new Set<string>());
-
-    const expandIds = new Set<string>();
-    const walk = (nodes: MapLayer[]) => {
-      for (const n of nodes)
-        if (n.children?.length) {
-          expandIds.add(n.id);
-          walk(n.children);
-        }
-    };
-    const built = buildLayerTree(treeData.layers, treeData.tree);
-    const target = built.length
-      ? built
-      : treeData.layers.map((l) => ({ id: String(l.layerId), title: l.title }));
-    walk(target);
-    setExpanded(expandIds.size ? expandIds : new Set(target.map((b) => b.id)));
+    setExpanded(new Set<string>());
   }, [treeData, treeEnabled]);
 
   const { data: searchData, isFetching: searchLoading } = useQuery({

@@ -3,21 +3,28 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     environment:
       PORT: 4200
       HOST: 0.0.0.0
       NODE_TLS_REJECT_UNAUTHORIZED: 0
+      TOKEN_STORE_PATH: /app/data/tokens.json
+    volumes:
+      - ./data:/app/data
     expose:
       - "4200"
+    ports:
+      - "127.0.0.1:4200:4200"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4200/auth/status"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4200/auth/status"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - demo
 
   web:
     build:
@@ -30,21 +37,25 @@ services:
       NEXT_TELEMETRY_DISABLED: 1
     expose:
       - "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
     depends_on:
       api:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks:
+      - demo
 
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -53,3 +64,9 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - demo
+
+networks:
+  demo:
+    driver: bridge

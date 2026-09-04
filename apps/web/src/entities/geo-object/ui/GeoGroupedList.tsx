@@ -41,7 +41,6 @@ export function GeoGroupedList({
     <div className="space-y-2">
       {groups.map(([layerId, items]) => {
         const rawTitle = getLayerTitle?.(layerId);
-        // fallback: for search results layerId may be category like "search" — use first item subtitle
         const fallback =
           items[0]?.subtitle?.split("·")[0]?.trim() ||
           items[0]?.subtitle ||
@@ -73,7 +72,7 @@ export function GeoGroupedList({
               <span className="grid h-5 w-5 place-items-center rounded text-[10px] text-zinc-500">
                 {open ? "▾" : "▸"}
               </span>
-              <span className="flex-1 truncate text-sm font-medium text-zinc-800">
+              <span className="flex-1 text-sm font-medium text-zinc-800">
                 {title}
               </span>
               <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs font-medium text-white">

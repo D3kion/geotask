@@ -4,6 +4,7 @@
 import { useEffect, useRef } from "react";
 import type { GeoObject } from "@/entities/geo-object/model/types";
 import type { NspdLayer } from "@/shared/api/nspd";
+import { mapGfiJsonToGeoObjects } from "@/shared/api/nspd";
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from "@/shared/config/map";
 
 export function MapView({
@@ -205,7 +206,9 @@ export function MapView({
                   return;
                 }
               }
-              const objs = mapGfiJson(json, String(l.layerId));
+              const objs = mapGfiJsonToGeoObjects(json, String(l.layerId), {
+                categoryId: l.categoryId,
+              });
               results.push(...objs);
             } catch {}
           }),
@@ -382,142 +385,4 @@ export function MapView({
       </div> */}
     </div>
   );
-}
-
-function mapGfiJson(raw: unknown, layerId: string): GeoObject[] {
-  if (!raw || typeof raw !== "object") return [];
-  const o = raw as Record<string, unknown>;
-  const features =
-    (o.features as unknown[]) ??
-    ((o.data as Record<string, unknown> | undefined)?.features as unknown[]) ??
-    [];
-
-  if (!Array.isArray(features) || features.length === 0) return [];
-
-  const out: GeoObject[] = [];
-  for (let idx = 0; idx < features.length; idx++) {
-    const rec = features[idx] as Record<string, unknown>;
-    const props = (rec.properties ??
-      rec.attributes ??
-      rec.fields ??
-      {}) as Record<string, unknown>;
-    const geom = rec.geometry as Record<string, unknown> | undefined;
-
-    const idRaw = (rec.id ?? props.id ?? props.objectId ?? idx) as
-      | string
-      | number;
-    const id = `${layerId}-${String(idRaw)}`;
-
-    const coords = extractLonLat(geom, props);
-    if (!coords) continue;
-
-    const title =
-      (props.display_name as string) ??
-      (props.name as string) ??
-      (props.title as string) ??
-      (props.label as string) ??
-      (props.cad_number as string) ??
-      `Объект ${layerId}`;
-
-    const subtitle =
-      `Слой ${layerId} · ${String(props.type ?? props.category ?? "").slice(0, 40)}`.trim();
-
-    const flat: Record<string, string> = {};
-    for (const [k, v] of Object.entries(props)) {
-      if (v == null) continue;
-      if (
-        typeof v === "string" ||
-        typeof v === "number" ||
-        typeof v === "boolean"
-      ) {
-        flat[k] = String(v);
-        if (Object.keys(flat).length >= 10) break;
-      }
-    }
-
-    out.push({
-      id: `gfi-${id}`,
-      title: String(title).slice(0, 120),
-      subtitle: subtitle || `Слой ${layerId}`,
-      layerId,
-      coords,
-      address:
-        (props.address as string) ??
-        (props.readable_address as string) ??
-        undefined,
-      props: Object.keys(flat).length ? flat : { id: String(idRaw) },
-    });
-  }
-  return out;
-}
-
-function extractLonLat(
-  geom: Record<string, unknown> | undefined,
-  props: Record<string, unknown>,
-): [number, number] | null {
-  if (!geom) {
-    const x = (props.x ?? props.lon ?? props.longitude) as number | undefined;
-    const y = (props.y ?? props.lat ?? props.latitude) as number | undefined;
-    if (typeof x === "number" && typeof y === "number") {
-      if (Math.abs(x) > 180) return toLonLat3857(x, y);
-      return [x, y];
-    }
-    return null;
-  }
-
-  const type = geom.type as string | undefined;
-  const coords = geom.coordinates as unknown;
-  const crs = (geom.crs as Record<string, unknown> | undefined)?.properties as
-    | Record<string, unknown>
-    | undefined;
-  const crsName = (crs?.name as string | undefined) ?? "EPSG:3857";
-  const is3857 = crsName.includes("3857");
-
-  if (type === "Point" && Array.isArray(coords) && coords.length >= 2) {
-    const [x, y] = coords as [number, number];
-    if (is3857) return toLonLat3857(x, y);
-    return [x, y];
-  }
-
-  if (type === "Polygon" && Array.isArray(coords)) {
-    const ring = (coords as number[][][])[0];
-    if (ring?.length) {
-      let sx = 0;
-      let sy = 0;
-      for (const [x, y] of ring) {
-        sx += x;
-        sy += y;
-      }
-      return is3857
-        ? toLonLat3857(sx / ring.length, sy / ring.length)
-        : [sx / ring.length, sy / ring.length];
-    }
-  }
-
-  if (type === "MultiPolygon" && Array.isArray(coords)) {
-    const poly = (coords as number[][][][])[0];
-    const ring = poly?.[0];
-    if (ring?.length) {
-      let sx = 0;
-      let sy = 0;
-      for (const [x, y] of ring) {
-        sx += x;
-        sy += y;
-      }
-      return is3857
-        ? toLonLat3857(sx / ring.length, sy / ring.length)
-        : [sx / ring.length, sy / ring.length];
-    }
-  }
-
-  return null;
-}
-
-function toLonLat3857(x: number, y: number): [number, number] {
-  const lon = (x / 20037508.34) * 180;
-  let lat = (y / 20037508.34) * 180;
-  lat =
-    (180 / Math.PI) *
-    (2 * Math.atan(Math.exp((lat * Math.PI) / 180)) - Math.PI / 2);
-  return [lon, lat];
 }

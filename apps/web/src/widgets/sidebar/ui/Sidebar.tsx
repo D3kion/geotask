@@ -72,18 +72,21 @@ export function Sidebar({
     return m;
   }, [wmsLayers, layers]);
 
-  const getLayerTitle = useCallback((id: string) => titleById.get(id) ?? id, [titleById]);
+  const getLayerTitle = useCallback(
+    (id: string) => titleById.get(id) ?? id,
+    [titleById],
+  );
   return (
     <aside className="flex w-[380px] shrink-0 flex-col border-r border-zinc-200 bg-white">
       {view.mode !== "layers" && (
         <div className="flex items-center gap-2 border-b border-zinc-200 px-3 py-3 shrink-0">
           <button
             onClick={onBack}
-            className="rounded-md px-2 py-1 text-sm hover:bg-zinc-100 text-zinc-400"
+            className="shrink-0 rounded-md px-2 py-1 text-sm hover:bg-zinc-100 text-zinc-400"
           >
             ← Назад
           </button>
-          <span className="text-sm font-medium text-zinc-900">
+          <span className="text-sm font-medium text-zinc-900 truncate">
             {view.mode === "search" && `Результаты · ${view.results.length}`}
             {view.mode === "selection" && `Выбрано · ${view.objects.length}`}
             {view.mode === "detail" && view.object.title}

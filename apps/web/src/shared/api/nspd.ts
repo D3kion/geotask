@@ -173,6 +173,12 @@ function mapFeatureToGeoObject(
         "search",
     ) ?? "search";
 
+  const categoryIdRaw =
+    (props.category as string | number | undefined) ??
+    (options.category as string | number | undefined) ??
+    (f.categoryId as string | number | undefined);
+  const categoryNameRaw = props.categoryName as string | undefined;
+
   const flatProps: Record<string, string> = {};
   for (const [k, v] of Object.entries(options)) {
     if (v == null) continue;
@@ -205,6 +211,9 @@ function mapFeatureToGeoObject(
     coords,
     address: address ? String(address) : undefined,
     props: Object.keys(flatProps).length ? flatProps : { id },
+    categoryId: categoryIdRaw != null ? String(categoryIdRaw) : undefined,
+    categoryName: categoryNameRaw ? String(categoryNameRaw) : undefined,
+    raw: f,
   };
 }
 
@@ -315,7 +324,11 @@ export async function fetchGetFeatureInfo(
   }
 }
 
-function mapGfiJsonToGeoObjects(raw: unknown, layerId: string): GeoObject[] {
+export function mapGfiJsonToGeoObjects(
+  raw: unknown,
+  layerId: string,
+  layerMeta?: { categoryId?: string | number; categoryName?: string },
+): GeoObject[] {
   if (!raw || typeof raw !== "object") return [];
   const o = raw as Record<string, unknown>;
 
@@ -336,6 +349,10 @@ function mapGfiJsonToGeoObjects(raw: unknown, layerId: string): GeoObject[] {
         {}) as Record<string, unknown>;
       const geom = rec.geometry as Record<string, unknown> | undefined;
 
+      // GFI кладёт поля в properties.options — смотрим оба уровня
+      const options = (props.options ?? {}) as Record<string, unknown>;
+      const at = (k: string): unknown => props[k] ?? options[k];
+
       const idRaw = (rec.id ?? props.id ?? props.objectId ?? idx) as
         | string
         | number;
@@ -346,16 +363,17 @@ function mapGfiJsonToGeoObjects(raw: unknown, layerId: string): GeoObject[] {
       if (!coords) return null;
 
       const title =
-        (props.display_name as string) ??
-        (props.name as string) ??
-        (props.title as string) ??
-        (props.label as string) ??
-        (props.cad_number as string) ??
-        (props.cn as string) ??
+        (at("name_by_doc") as string) ??
+        (at("display_name") as string) ??
+        (at("name") as string) ??
+        (at("title") as string) ??
+        (at("label") as string) ??
+        (at("cad_number") as string) ??
+        (at("cn") as string) ??
         `Объект ${layerId}`;
 
       const subtitle =
-        `Слой ${layerId} · ${String(props.type ?? props.category ?? "").slice(0, 40)}`.trim();
+        `Слой ${layerId} · ${String(at("type") ?? at("category") ?? "").slice(0, 40)}`.trim();
 
       const flat: Record<string, string> = {};
       for (const [k, v] of Object.entries(props)) {
@@ -370,6 +388,15 @@ function mapGfiJsonToGeoObjects(raw: unknown, layerId: string): GeoObject[] {
         }
       }
 
+      const categoryIdRaw =
+        (at("category") as string | number | undefined) ??
+        (at("categoryId") as string | number | undefined) ??
+        layerMeta?.categoryId;
+      const categoryNameRaw =
+        (at("categoryName") as string | undefined) ??
+        (at("category_name") as string | undefined) ??
+        layerMeta?.categoryName;
+
       return {
         id: `gfi-${id}`,
         title: String(title).slice(0, 120),
@@ -377,10 +404,14 @@ function mapGfiJsonToGeoObjects(raw: unknown, layerId: string): GeoObject[] {
         layerId,
         coords,
         address:
-          (props.address as string) ??
-          (props.readable_address as string) ??
+          (at("address") as string) ??
+          (at("readable_address") as string) ??
           undefined,
         props: Object.keys(flat).length ? flat : { id: String(idRaw) },
+        categoryId:
+          categoryIdRaw != null ? String(categoryIdRaw) : undefined,
+        categoryName: categoryNameRaw ? String(categoryNameRaw) : undefined,
+        raw: rec,
       } as GeoObject;
     })
     .filter(Boolean) as GeoObject[];
@@ -416,7 +447,7 @@ export function buildLayerTree(
           String(f.name ?? f.title ?? `Папка ${f.id ?? ""}`).trim() || "Папка";
         const id = String(f.id ?? title);
 
-        const childLayers = (f.layers ?? [])
+        const childLayers = [...new Set(f.layers ?? [])]
           .map((lid) => byId.get(Number(lid)))
           .filter(Boolean)
           .map((l) => ({
@@ -444,11 +475,19 @@ export function buildLayerTree(
     };
     collect(tree.folders);
 
-    const rootLayers = (tree.layers ?? [])
-      .concat(
-        layers.map((l) => l.layerId).filter((id) => !folderLayerIds.has(id)),
-      )
-      .map((lid) => byId.get(Number(lid)))
+    // tree.layers уже вне папок — дедуп, иначе слой попадёт дважды
+    const rootLayers = [
+      ...new Set(
+        (tree.layers ?? [])
+          .concat(
+            layers
+              .map((l) => l.layerId)
+              .filter((id) => !folderLayerIds.has(id)),
+          )
+          .map(Number),
+      ),
+    ]
+      .map((lid) => byId.get(lid))
       .filter(Boolean)
       .map((l) => ({ id: String(l!.layerId), title: l!.title }));
 
@@ -459,4 +498,102 @@ export function buildLayerTree(
     id: String(l.layerId),
     title: l.title,
   }));
+}
+
+// Настройки отображения карточки: GET geom-card-display-settings/{categoryId}
+export type CardTitleItem = {
+  prefix?: string;
+  keyValue: string;
+  defaultValue?: string;
+};
+
+export type CardField = {
+  keyName: string;
+  keyValue: string;
+  padding?: boolean;
+  defaultValue?: string;
+  showEmpty?: boolean;
+};
+
+export type CardSettings = {
+  title: CardTitleItem[];
+  card: CardField[];
+};
+
+// Источник значений для путей "properties.options.*":
+// сырая feature, плоские properties — под options
+export function cardSource(obj: GeoObject): unknown {
+  const r = obj.raw as Record<string, unknown> | undefined;
+  const p = r?.properties as Record<string, unknown> | undefined;
+  if (p && typeof p === "object" && p.options != null) {
+    return obj.raw;
+  }
+  return {
+    properties: {
+      options: p && typeof p === "object" ? p : obj.props,
+    },
+  };
+}
+
+// keyValue вида "properties.options.cad_num" — идём по точкам
+export function pickPath(src: unknown, path: string): unknown {
+  let cur = src;
+  for (const p of path.split(".")) {
+    if (cur == null || typeof cur !== "object") {
+      return undefined;
+    }
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  return cur;
+}
+
+// Конверт НСПД: {title, card} | {data: {...}} | {data: {data: {...}}}
+export function parseCardSettings(raw: unknown): CardSettings | null {
+  const cands = [
+    raw,
+    (raw as Record<string, unknown> | null)?.data,
+    (
+      (raw as Record<string, unknown> | null)?.data as Record<
+        string,
+        unknown
+      > | null
+    )?.data,
+  ];
+  for (const c of cands) {
+    if (c && typeof c === "object") {
+      const o = c as Record<string, unknown>;
+      if (Array.isArray(o.title) && Array.isArray(o.card)) {
+        if (o.title.length === 0 && o.card.length === 0) {
+          return null;
+        }
+        return {
+          title: o.title as CardTitleItem[],
+          card: o.card as CardField[],
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// Значение строки карточки; null — строку скрыть (showEmpty=false и пусто)
+export function cardValue(
+  f: Pick<CardField, "keyValue" | "defaultValue" | "showEmpty">,
+  src: unknown,
+): string | null {
+  const v = pickPath(src, f.keyValue);
+  const s = v == null || v === "" ? (f.defaultValue ?? "") : String(v);
+  if (!s && !f.showEmpty) {
+    return null;
+  }
+  return s;
+}
+
+export async function fetchCardSettings(
+  categoryId: string | number,
+): Promise<CardSettings | null> {
+  const raw = await fetchJson<unknown>(
+    `${API_BASE}${NSPD_ENDPOINTS.cardSettings(categoryId)}`,
+  );
+  return parseCardSettings(raw);
 }

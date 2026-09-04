@@ -1,6 +1,7 @@
 "use client";
 
 import type { MapLayer } from "@/entities/map-layer/model/types";
+import { MAX_BULK_LAYERS, leafIds } from "@/entities/map-layer/model/types";
 
 export function LayerTree({
   layers,
@@ -49,9 +50,10 @@ function LayerNode({
 }) {
   const hasChildren = !!layer.children?.length;
   const isExpanded = expanded.has(layer.id);
+  const leaves = hasChildren ? leafIds(layer) : [];
+  const bulkOff = leaves.length > MAX_BULK_LAYERS;
   const isVisible = hasChildren
-    ? (layer.children?.some((c) => visible.has(c.id)) ?? false) ||
-      visible.has(layer.id)
+    ? leaves.some((id) => visible.has(id))
     : visible.has(layer.id);
 
   return (
@@ -75,18 +77,24 @@ function LayerNode({
         <input
           type="checkbox"
           checked={isVisible}
+          disabled={bulkOff}
+          title={
+            bulkOff
+              ? `Слоёв много (${leaves.length}) — включайте по одному`
+              : undefined
+          }
           onChange={() => {
-            if (hasChildren && layer.children) {
-              const allOn = layer.children.every((c) => visible.has(c.id));
-              layer.children.forEach((c) => {
-                if (allOn && visible.has(c.id)) onToggle(c.id);
-                if (!allOn && !visible.has(c.id)) onToggle(c.id);
-              });
-            } else {
+            if (!hasChildren) {
               onToggle(layer.id);
+              return;
+            }
+            const allOn = leaves.every((id) => visible.has(id));
+            for (const id of leaves) {
+              if (allOn && visible.has(id)) onToggle(id);
+              if (!allOn && !visible.has(id)) onToggle(id);
             }
           }}
-          className="h-4 w-4 accent-zinc-900"
+          className="h-4 w-4 accent-zinc-900 disabled:opacity-40"
         />
 
         <span className="flex-1 text-sm text-zinc-800 truncate">
@@ -96,8 +104,8 @@ function LayerNode({
         {layer.count !== undefined && (
           <span className="text-xs text-zinc-400">{layer.count}</span>
         )}
-        {hasChildren && layer.children && (
-          <span className="text-xs text-zinc-400">{layer.children.length}</span>
+        {hasChildren && (
+          <span className="text-xs text-zinc-400">{leaves.length}</span>
         )}
       </div>
 
